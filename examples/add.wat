@@ -4,7 +4,14 @@
   (type $add_t (func (param i32 i32) (result i32)))
 
   (func $add (type $add_t) (param $lhs i32) (param $rhs i32) (result i32)
-    get_local $lhs ;; push value to stack
-    get_local $rhs ;; push value to stack
-    i32.add) ;; pop both values, push back sum
-  (export "add" (func $add)))
+    local.get $lhs ;; push value to stack
+    local.get $rhs ;; push value to stack
+    i32.add)       ;; pop both values, push back sum
+
+  (func $double_impl (param $n i32) (result i32)
+    local.get $n
+    local.get $n
+    call $add)
+
+  (export "add" (func $add))
+  (export "double" (func $double_impl)))
