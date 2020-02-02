@@ -7,3 +7,6 @@ scoreboard players set zero wasm 0
 # Set up storage
 data modify storage wasm Stack set value []
 data modify storage wasm Locals set value []
+
+# Display an interactive thing
+tellraw @a {"text":"Prepare a function call","color":"green","clickEvent":{"action":"suggest_command","value":"/data modify storage wasm Locals set value [[1L, 2L]]"}}
