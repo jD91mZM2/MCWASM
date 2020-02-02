@@ -58,5 +58,10 @@ for func in ctx.iter_functions():
 
     output = ctx.transpile(func.body.code, args.namespace)
 
-    with open(path, "w") as f:
+    with path.open("w") as f:
         f.write(output)
+
+for static in Path(__file__).with_name("static").iterdir():
+    path = args.out_dir.joinpath(static.name)
+    with static.open() as input, path.open("w") as output:
+        output.write(input.read())

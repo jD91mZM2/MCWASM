@@ -1,6 +1,7 @@
 (module
   (func $fac (param $n i32) (result i32)
     local.get $n
+    i32.eqz
     if
       i32.const 1
       return
