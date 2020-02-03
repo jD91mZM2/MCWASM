@@ -2,7 +2,6 @@ from cmds import CmdGenerator
 import wasm
 
 CONDITION_COUNTER = 0
-FUNCTION_COUNTER = 0
 
 
 def InstructionHandler(func):
@@ -14,10 +13,13 @@ def InstructionHandler(func):
 
 
 class InstructionTable:
-    def __init__(self, ctx, namespace):
-        self.conditions = []
+    def __init__(self, ctx, wasm_function, namespace):
+        self.wasm_function = wasm_function
+        self.conditions = ["if score returned wasm = zero wasm"]
         self.ctx = ctx
         self.namespace = namespace
+        self.output = [wasm_function.name]
+        self.snippets = 0
 
         # See the spec:
         # https://webassembly.github.io/spec/core/binary/instructions.html
@@ -54,15 +56,11 @@ class InstructionTable:
         }
 
     def prologue(self):
-        global FUNCTION_COUNTER
-        self.id = FUNCTION_COUNTER
-        FUNCTION_COUNTER += 1
+        return None
 
-        cmd = CmdGenerator(self.conditions)
-        cmd.set_scoreboard(f"returned_{self.id}", 0)
-
-        self.conditions += [None]
-
+    def epilogue(self):
+        cmd = CmdGenerator([])
+        cmd.set_scoreboard(f"returned", 0)
         return cmd.output
 
     def handle(self, instruction):
@@ -101,29 +99,29 @@ class InstructionTable:
 
     @InstructionHandler
     def if_(self, cmd, _ins):
-        global CONDITION_COUNTER
-        number = CONDITION_COUNTER
-        CONDITION_COUNTER += 1
-
-        cmd.load_to_scoreboard(0, f"condition_{number}")
+        cmd.load_to_scoreboard(0, "condition")
         cmd.drop()
-        cmd.comment(f"Condition #{number} begin")
 
-        self.conditions.append(
-            f"unless score condition_{number} wasm = zero wasm"
-        )
+        snippet = f"{self.wasm_function.name}_snippet_{self.snippets}"
+        self.snippets += 1
+
+        cmd.comment("Conditional is split into separate function")
+        with cmd.execute_param(
+                f"unless score condition wasm = zero wasm"
+        ):
+            cmd.function(self.namespace, snippet)
+
+        self.output.append(snippet)
 
     @InstructionHandler
     def end(self, cmd, _ins):
         # Beware: This may be the whole function's end
-        if self.conditions:
-            self.conditions.pop()
-            cmd.comment(f"Condition #{len(self.conditions)} end")
+        if len(self.output) > 1:
+            self.output.pop()
 
     @InstructionHandler
     def return_(self, cmd, _ins):
-        self.conditions[0] = f"if score returned_{self.id} wasm = zero wasm"
-        cmd.set_scoreboard(f"returned_{self.id}", 1)
+        cmd.set_scoreboard(f"returned", 1)
 
     @InstructionHandler
     def call(self, cmd, ins):
@@ -135,21 +133,8 @@ class InstructionTable:
             cmd.local_set(i)
             cmd.drop()
 
-        with cmd.ignore_params():
-            # Push return status to stack. All non-return conditionals should,
-            # in the future, be split into their own channels.
-            cmd.comment("Preserve return status")
-            cmd.push(0)
-            cmd.load_from_scoreboard(f"returned_{self.id}", 0)
-
         # Actually execute function
-        cmd.execute(f"function {self.namespace}:{func.name}")
-
-        with cmd.ignore_params():
-            # Pop return status. See the note above.
-            cmd.comment("Restore return status")
-            cmd.load_to_scoreboard(0, f"returned_{self.id}")
-            cmd.drop()
+        cmd.function(self.namespace, func.name)
 
         # Drop the stack frame
         cmd.drop_local_frame()

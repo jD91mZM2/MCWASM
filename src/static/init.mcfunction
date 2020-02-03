@@ -3,6 +3,7 @@ scoreboard objectives remove wasm
 scoreboard objectives add wasm dummy {"text":"WebAssembly","color":"green"}
 scoreboard objectives setdisplay sidebar wasm
 scoreboard players set zero wasm 0
+scoreboard players set returned wasm 0
 
 # Set up storage
 data modify storage wasm Stack set value []

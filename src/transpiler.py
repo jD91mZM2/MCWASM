@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 from instructions import InstructionTable
 import wasm
 
@@ -67,13 +67,24 @@ class Context:
             # TODO support more types
             yield self.function(i)
 
-    def transpile(self, bytecode, namespace):
-        output = []
+    def transpile(self, func, namespace):
+        outputs = defaultdict(lambda: [])
 
-        instruction_table = InstructionTable(self, namespace)
-        output.append(instruction_table.prologue())
+        instruction_table = InstructionTable(self, func, namespace)
+        prologue = instruction_table.prologue()
+        if prologue is not None:
+            outputs[func.name].append(prologue)
 
-        for instruction in wasm.decode_bytecode(bytecode):
-            output.append(instruction_table.handle(instruction))
+        for instruction in wasm.decode_bytecode(func.body.code):
+            out = instruction_table.output[-1]
+            commands = instruction_table.handle(instruction)
+            outputs[out].append(commands)
 
-        return "\n".join(output)
+        epilogue = instruction_table.epilogue()
+        if epilogue is not None:
+            outputs[func.name].append(epilogue)
+
+        for out in outputs:
+            outputs[out] = "\n".join(outputs[out])
+
+        return outputs

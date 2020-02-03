@@ -1,22 +1,12 @@
-def make_guard(restore):
-    class Guard:
-        def __init__(self, cmd, *args):
-            self.cmd = cmd
-            self.args = args
+class ParamGuard:
+    def __init__(self, cmd):
+        self.cmd = cmd
 
-        def __enter__(self):
-            pass
+    def __enter__(self):
+        pass
 
-        def __exit__(self, type, value, traceback):
-            restore(self)
-    return Guard
-
-PopParamGuard = make_guard(
-    lambda instance: instance.cmd.execute_params.pop(),
-)
-def RestoreParamGuardExit(instance):
-    instance.cmd.execute_params = instance.args[0]
-RestoreParamGuard = make_guard(RestoreParamGuardExit)
+    def __exit__(self, type, value, traceback):
+        self.cmd.execute_params.pop()
 
 
 class CmdGenerator:
@@ -45,14 +35,7 @@ class CmdGenerator:
     # parameter when the with construct is exited.
     def execute_param(self, param):
         self.execute_params.append(param)
-        return PopParamGuard(self)
-
-    # Ignores all `execute` parameters. Supposed to be use with a `with`
-    # statement, see `execute_param`.
-    def ignore_params(self):
-        previous = self.execute_params
-        self.execute_params = []
-        return RestoreParamGuard(self, previous)
+        return ParamGuard(self)
 
     # Load a value from the stack to the scoreboard, where the index is an
     # offset from the top of the stack.
@@ -63,7 +46,9 @@ class CmdGenerator:
     # Load a value from the scoreboard to the stack, where the index is an
     # offset from the top of the stack.
     def load_from_scoreboard(self, score, stack_index):
-        with self.execute_param(f"store result storage wasm Stack[{-1 - stack_index}] long 1"):
+        with self.execute_param(
+                f"store result storage wasm Stack[{-1 - stack_index}] long 1"
+        ):
             self.execute(f"scoreboard players get {score} wasm")
 
     # Set a static value to the scoreboard
@@ -83,13 +68,20 @@ class CmdGenerator:
         self.load_to_scoreboard(0, "lhs")
         self.load_to_scoreboard(1, "rhs")
         with self.execute_param(f"store result storage wasm Stack[-2] long 1"):
-            self.execute(f"scoreboard players operation lhs wasm {op} rhs wasm")
+            # Interestingly enough, 3 -= 2 will make lhs be 1, but return -1
+            # because it returns the difference I guess. So in order to save
+            # commands (there are probably going to be quite a lot of
+            # calculations, so optimizations matter), let's flip the params.
+            self.execute(
+                f"scoreboard players operation rhs wasm {op} lhs wasm"
+            )
         self.drop()
 
     # Add a new local variable list, setting each value to zero initially
     def push_local_frame(self, new_size):
         self.execute(
-            f"data modify storage wasm Locals append value [{', '.join(['0L'] * new_size)}]"
+            f"data modify storage wasm Locals append value "
+            f"[{', '.join(['0L'] * new_size)}]"
         )
 
     # Drop the top local variable list
@@ -109,3 +101,7 @@ class CmdGenerator:
             f"data modify storage wasm Locals[-1][{local_index}] set "
             "from storage wasm Stack[-1]"
         )
+
+    # Run a function
+    def function(self, namespace, func):
+        self.execute(f"function {namespace}:{func}")

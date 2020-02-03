@@ -54,12 +54,12 @@ for export in ctx.iter_exports():
 args.out_dir.mkdir(parents=True, exist_ok=True)
 
 for func in ctx.iter_functions():
-    path = args.out_dir.joinpath(func.name + ".mcfunction")
+    outputs = ctx.transpile(func, args.namespace)
 
-    output = ctx.transpile(func.body.code, args.namespace)
-
-    with path.open("w") as f:
-        f.write(output)
+    for out, text in outputs.items():
+        path = args.out_dir.joinpath(out + ".mcfunction")
+        with path.open("w") as f:
+            f.write(text)
 
 for static in Path(__file__).with_name("static").iterdir():
     path = args.out_dir.joinpath(static.name)
