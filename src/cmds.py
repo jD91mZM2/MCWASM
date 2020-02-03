@@ -1,12 +1,22 @@
-class ConditionGuard:
-    def __init__(self, cmd):
-        self.cmd = cmd
+def make_guard(restore):
+    class Guard:
+        def __init__(self, cmd, *args):
+            self.cmd = cmd
+            self.args = args
 
-    def __enter__(self):
-        pass
+        def __enter__(self):
+            pass
 
-    def __exit__(self, type, value, traceback):
-        self.cmd.execute_params.pop()
+        def __exit__(self, type, value, traceback):
+            restore(self)
+    return Guard
+
+PopParamGuard = make_guard(
+    lambda instance: instance.cmd.execute_params.pop(),
+)
+def RestoreParamGuardExit(instance):
+    instance.cmd.execute_params = instance.args[0]
+RestoreParamGuard = make_guard(RestoreParamGuardExit)
 
 
 class CmdGenerator:
@@ -21,9 +31,10 @@ class CmdGenerator:
     # Execute a raw Minecraft command. For portability reasons with upcoming
     # releases, this should be executed from as few places as possible.
     def execute(self, line):
-        if self.execute_params:
+        params = list(filter(lambda x: x is not None, self.execute_params))
+        if params:
             self.output += (
-                "execute " + " ".join(self.execute_params) + " run "
+                "execute " + " ".join(params) + " run "
                 + line + "\n"
             )
         else:
@@ -34,7 +45,14 @@ class CmdGenerator:
     # parameter when the with construct is exited.
     def execute_param(self, param):
         self.execute_params.append(param)
-        return ConditionGuard(self)
+        return PopParamGuard(self)
+
+    # Ignores all `execute` parameters. Supposed to be use with a `with`
+    # statement, see `execute_param`.
+    def ignore_params(self):
+        previous = self.execute_params
+        self.execute_params = []
+        return RestoreParamGuard(self, previous)
 
     # Load a value from the stack to the scoreboard, where the index is an
     # offset from the top of the stack.

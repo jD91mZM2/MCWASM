@@ -2,12 +2,13 @@ from cmds import CmdGenerator
 import wasm
 
 CONDITION_COUNTER = 0
+FUNCTION_COUNTER = 0
 
 
 def InstructionHandler(func):
-    def first_invocation(*kwargs):
+    def first_invocation(*args):
         def second_invocation(cmd, ins):
-            func(*kwargs, cmd, ins)
+            func(*args, cmd, ins)
         return second_invocation
     return first_invocation
 
@@ -28,6 +29,7 @@ class InstructionTable:
 
             # Conditions & Loops
             wasm.OP_IF: self.if_(),
+            wasm.OP_RETURN: self.return_(),
             wasm.OP_END: self.end(),
 
             # Consts
@@ -51,8 +53,20 @@ class InstructionTable:
             wasm.OP_I64_REM_U: self.operation("%="),
         }
 
-    def handle(self, instruction):
+    def prologue(self):
+        global FUNCTION_COUNTER
+        self.id = FUNCTION_COUNTER
+        FUNCTION_COUNTER += 1
+
         cmd = CmdGenerator(self.conditions)
+        cmd.set_scoreboard(f"returned_{self.id}", 0)
+
+        self.conditions += [None]
+
+        return cmd.output
+
+    def handle(self, instruction):
+        cmd = CmdGenerator(self.conditions[:])
         if instruction.op.id in self.handlers:
             cmd.execute(
                 'tellraw @a "[WASM] Executing: '
@@ -107,16 +121,37 @@ class InstructionTable:
             cmd.comment(f"Condition #{len(self.conditions)} end")
 
     @InstructionHandler
+    def return_(self, cmd, _ins):
+        self.conditions[0] = f"if score returned_{self.id} wasm = zero wasm"
+        cmd.set_scoreboard(f"returned_{self.id}", 1)
+
+    @InstructionHandler
     def call(self, cmd, ins):
         func = self.ctx.function(ins.imm.function_index)
 
+        # Map stack to local variables
         cmd.push_local_frame(len(func.type.param_types))
         for i, _ in enumerate(func.type.param_types):
             cmd.local_set(i)
             cmd.drop()
 
+        with cmd.ignore_params():
+            # Push return status to stack. All non-return conditionals should,
+            # in the future, be split into their own channels.
+            cmd.comment("Preserve return status")
+            cmd.push(0)
+            cmd.load_from_scoreboard(f"returned_{self.id}", 0)
+
+        # Actually execute function
         cmd.execute(f"function {self.namespace}:{func.name}")
 
+        with cmd.ignore_params():
+            # Pop return status. See the note above.
+            cmd.comment("Restore return status")
+            cmd.load_to_scoreboard(0, f"returned_{self.id}")
+            cmd.drop()
+
+        # Drop the stack frame
         cmd.drop_local_frame()
 
     @InstructionHandler

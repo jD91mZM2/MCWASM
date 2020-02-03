@@ -71,6 +71,8 @@ class Context:
         output = []
 
         instruction_table = InstructionTable(self, namespace)
+        output.append(instruction_table.prologue())
+
         for instruction in wasm.decode_bytecode(bytecode):
             output.append(instruction_table.handle(instruction))
 
