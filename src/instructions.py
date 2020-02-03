@@ -40,6 +40,9 @@ class InstructionTable:
 
             # i32 data types
             wasm.OP_I32_EQZ: self.eqz(),
+            wasm.OP_I32_EQ: self.cmp("="),
+            wasm.OP_I32_LT_S: self.cmp("<"),
+            wasm.OP_I32_GT_S: self.cmp(">"),
             wasm.OP_I32_ADD: self.operation("+="),
             wasm.OP_I32_SUB: self.operation("-="),
             wasm.OP_I32_MUL: self.operation("*="),
@@ -48,6 +51,9 @@ class InstructionTable:
 
             # i64 data types
             wasm.OP_I64_EQZ: self.eqz(),
+            wasm.OP_I64_EQ: self.cmp("="),
+            wasm.OP_I64_LT_S: self.cmp("<"),
+            wasm.OP_I64_GT_S: self.cmp(">"),
             wasm.OP_I64_ADD: self.operation("+="),
             wasm.OP_I64_SUB: self.operation("-="),
             wasm.OP_I64_MUL: self.operation("*="),
@@ -92,10 +98,18 @@ class InstructionTable:
     @InstructionHandler
     def eqz(self, cmd, _ins):
         cmd.load_to_scoreboard(0, "lhs")
-        cmd.set_scoreboard("rhs", 0)
+        cmd.set(0)
         with cmd.execute_param("if score lhs wasm = zero wasm"):
-            cmd.set_scoreboard("rhs", 1)
-        cmd.load_from_scoreboard("rhs", 0)
+            cmd.set(1)
+
+    @InstructionHandler
+    def cmp(self, op, cmd, _ins):
+        cmd.load_to_scoreboard(0, "rhs")
+        cmd.drop()
+        cmd.load_to_scoreboard(0, "lhs")
+        cmd.set(0)
+        with cmd.execute_param(f"if score lhs wasm {op} rhs wasm"):
+            cmd.set(1)
 
     @InstructionHandler
     def if_(self, cmd, _ins):

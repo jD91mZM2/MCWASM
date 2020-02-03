@@ -55,6 +55,10 @@ class CmdGenerator:
     def set_scoreboard(self, score, value):
         self.execute(f"scoreboard players set {score} wasm {value}")
 
+    # Set the top value of the stack
+    def set(self, value):
+        self.execute(f"data modify storage wasm Stack[-1] set value {value}L")
+
     # Push a static value to the stack
     def push(self, value):
         self.execute(f"data modify storage wasm Stack append value {value}L")
@@ -65,17 +69,14 @@ class CmdGenerator:
 
     # Run a mathematical operation on the top two values on the stack
     def operation(self, op):
-        self.load_to_scoreboard(0, "lhs")
-        self.load_to_scoreboard(1, "rhs")
-        with self.execute_param(f"store result storage wasm Stack[-2] long 1"):
-            # Interestingly enough, 3 -= 2 will make lhs be 1, but return -1
-            # because it returns the difference I guess. So in order to save
-            # commands (there are probably going to be quite a lot of
-            # calculations, so optimizations matter), let's flip the params.
-            self.execute(
-                f"scoreboard players operation rhs wasm {op} lhs wasm"
-            )
+        # Note: Since it's a stack we want to grab the second operand first!
+        self.load_to_scoreboard(0, "rhs")
         self.drop()
+        self.load_to_scoreboard(0, "lhs")
+        with self.execute_param(f"store result storage wasm Stack[-1] long 1"):
+            self.execute(
+                f"scoreboard players operation lhs wasm {op} rhs wasm"
+            )
 
     # Add a new local variable list, setting each value to zero initially
     def push_local_frame(self, new_size):
