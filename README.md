@@ -34,23 +34,29 @@ there by any means, but it's *actual* progress.
    You can try files I've written in the `examples` directory:
 
    ```sh
-   wat2wasm examples/add.wat
+   make -C examples
    ```
 
-1. Create Minecraft datapack. See [Minecraft
-   Wiki](https://minecraft.gamepedia.com/Data_pack#Folder_structure). Future
-   versions of MCWASM may generate a complete datapack for you, but it doesn't
-   for now.
+   and then you can find the binaries in `examples/build/*.wasm`
 
 1. Run the `main.py` script with a few arguments:
    1. Input file. This is your compiled .wasm
-   1. Output directory. This is your datapack's `data/(namespace)/functions`
-      directory.
+   1. Output directory. This is the destination of the datapack. The directory
+      should not exist, and look something like `~/.minecraft/saves/My
+      World/datapacks/my-wasm-datapack`.
    1. `--namespace` and then the "namespace" of your output. This is the string
       you choose to be `(namespace)` in the previous step. It's used for
       different functions to be able to access each other.
 
 1. Run it in Minecraft. `/reload` if you've changed the datapack while in game,
-   and `/function (namespace):func_#` where `#` is the function you want to
-   run. Don't worry - in the future there will be support for actual named
-   functions, using Minecraft's tag system.
+   and `/function #(namespace):my-exported-function`. That works because
+   there's a user-friendly "tag" set up. If you omit the hash, you'll notice a
+   few more functions. Just for reference:
+   - `func_(x)` are the main function bodies, with numbers ordered after their
+     parsing position. You'd be better off not relying on these.
+   - `func_(x)_snippet_(y)` are parts of the functions, such as conditionals,
+     that needed to be split out for technical reasons. You'd be straight up
+     insane if you try to rely on these snippets, the numbers are at this point
+     just completely unstable.
+   - `init` is the function that runs when you run `/reload` (a part of the
+     `#minecraft:load` tag).

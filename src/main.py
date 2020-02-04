@@ -1,12 +1,9 @@
 from argparse import ArgumentParser
 from pathlib import Path
-from wasm import (
-    decode_bytecode,
-    format_instruction,
-    format_lang_type,
-    INSN_ENTER_BLOCK,
-    INSN_LEAVE_BLOCK,
-)
+from string import Template
+import json
+import shutil
+import sys
 
 import transpiler
 
@@ -22,6 +19,11 @@ parser.add_argument(
     help="The datapack's namespace",
     required=True,
 )
+parser.add_argument(
+    "--force",
+    action="store_true",
+    help="Don't prompt before deleting any previous directory",
+)
 
 args = parser.parse_args()
 
@@ -30,38 +32,57 @@ with open(args.input, "rb") as f:
 
 ctx = transpiler.Context(bytecode)
 
-# Debug print
-for export in ctx.iter_exports():
-    if isinstance(export, transpiler.Function):
-        print()
-        print("--------------------------------")
-        print(f"Function name: {export.name}")
-        for arg in export.type.param_types:
-            print(f"Argument: {format_lang_type(arg)}")
-        if export.type.return_type:
-            print(f"Return: {format_lang_type(export.type.return_type)}")
-        print("Implementation:")
+# Start generation: Copy over template
+if args.out_dir.exists():
+    if not args.force:
+        print(
+            "Directory already exists! Are you sure you wish "
+            "to delete its contents?"
+        )
+        print("Pass --force to be noninteractive")
+        verification = input("Enter 'yes': ")
+        if verification != "yes":
+            print("Did not verify")
+            sys.exit(1)
+    shutil.rmtree(args.out_dir)
 
-        indent = 0
-        for instruction in decode_bytecode(export.body.code):
-            if instruction.op.flags & INSN_LEAVE_BLOCK:
-                indent -= 2
-            print('| ' + ' ' * indent + format_instruction(instruction))
-            if instruction.op.flags & INSN_ENTER_BLOCK:
-                indent += 2
+shutil.copytree(
+    Path(__file__).parent.with_name("template"),
+    args.out_dir,
+)
 
-# Start generation
-args.out_dir.mkdir(parents=True, exist_ok=True)
+data_dir = args.out_dir.joinpath("data")
+namespace_dir = data_dir.joinpath(args.namespace)
+shutil.move(data_dir.joinpath("$namespace"), namespace_dir)
 
+# Substitute tag
+load_file = data_dir.joinpath("minecraft", "tags", "functions", "load.json")
+with load_file.open("r+") as f:
+    original = f.read()
+    processed = Template(original).substitute(namespace=args.namespace)
+    f.seek(0)
+    f.truncate(0)
+    f.write(processed)
+
+# Generate functions
+functions_dir = namespace_dir.joinpath("functions")
 for func in ctx.iter_functions():
     outputs = ctx.transpile(func, args.namespace)
 
     for out, text in outputs.items():
-        path = args.out_dir.joinpath(out + ".mcfunction")
+        path = functions_dir.joinpath(out + ".mcfunction")
         with path.open("w") as f:
             f.write(text)
 
-for static in Path(__file__).with_name("static").iterdir():
-    path = args.out_dir.joinpath(static.name)
-    with static.open() as input, path.open("w") as output:
-        output.write(input.read())
+# Create tags for all exports
+tag_dir = namespace_dir.joinpath("tags", "functions")
+tag_dir.mkdir(parents=True)
+for export in ctx.iter_exports():
+    path = tag_dir.joinpath(export.name + ".json")
+    with path.open("w") as f:
+        f.write(json.dumps({
+            "values": [
+                f"{args.namespace}:{export.value.name}",
+                f"{args.namespace}:post_function"
+            ]
+        }))

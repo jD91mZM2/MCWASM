@@ -3,6 +3,7 @@ from instructions import InstructionTable
 import wasm
 
 Function = namedtuple("Function", ["name", "type", "body"])
+Export = namedtuple("Export", ["name", "value"])
 
 condition_counter = 0
 
@@ -44,11 +45,10 @@ class Context:
     def export(self, i):
         export = self.exports[i]
 
-        # TODO support more types
-        return Function(
+        return Export(
             name=bytearray(export.field_str).decode("UTF-8"),
-            type=self.types[self.func_types[export.index]],
-            body=self.functions[export.index],
+            # TODO support more types
+            value=self.function(i),
         )
 
     def iter_exports(self):
