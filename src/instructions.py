@@ -7,7 +7,7 @@ CONDITION_COUNTER = 0
 def InstructionHandler(func):
     def first_invocation(*args):
         def second_invocation(cmd, ins):
-            func(*args, cmd, ins)
+            return func(*args, cmd, ins)
         return second_invocation
     return first_invocation
 
@@ -31,6 +31,7 @@ class InstructionTable:
 
             # Conditions & Loops
             wasm.OP_IF: self.if_(),
+            wasm.OP_ELSE: self.else_(),
             wasm.OP_RETURN: self.return_(),
             wasm.OP_END: self.end(),
 
@@ -70,6 +71,7 @@ class InstructionTable:
         return cmd.output
 
     def handle(self, instruction):
+        default_out = self.output[-1]
         cmd = CmdGenerator(self.conditions[:])
         if instruction.op.id in self.handlers:
             cmd.execute(
@@ -77,44 +79,48 @@ class InstructionTable:
                 + wasm.format_instruction(instruction)
                 + '"'
             )
-            self.handlers[instruction.op.id](cmd, instruction)
+            specified_out = self.handlers[instruction.op.id](cmd, instruction)
+            if specified_out is not None:
+                return cmd.output, specified_out
         else:
             cmd.execute(
                 'tellraw @a {"text":"[WASM] TODO: '
                 + wasm.format_instruction(instruction)
                 + '","color":"red"}'
             )
-        return cmd.output
+        return cmd.output, default_out
 
     @InstructionHandler
     def const(self, cmd, ins):
-        cmd.push(ins.imm.value)
+        cmd.stack().push(ins.imm.value)
 
     @InstructionHandler
     def operation(self, op, cmd, _ins):
-        cmd.operation(op)
-        return cmd
+        cmd.stack().operation(op)
 
     @InstructionHandler
     def eqz(self, cmd, _ins):
-        cmd.load_to_scoreboard(0, "lhs")
-        cmd.set(0)
+        cmd.stack().load_to_scoreboard("lhs")
+        cmd.stack().set(0)
         with cmd.execute_param("if score lhs wasm = zero wasm"):
-            cmd.set(1)
+            cmd.stack().set(1)
 
     @InstructionHandler
     def cmp(self, op, cmd, _ins):
-        cmd.load_to_scoreboard(0, "rhs")
-        cmd.drop()
-        cmd.load_to_scoreboard(0, "lhs")
-        cmd.set(0)
+        cmd.stack().load_to_scoreboard("rhs")
+        cmd.stack().drop()
+        cmd.stack().load_to_scoreboard("lhs")
+        cmd.stack().set(0)
         with cmd.execute_param(f"if score lhs wasm {op} rhs wasm"):
-            cmd.set(1)
+            cmd.stack().set(1)
 
     @InstructionHandler
     def if_(self, cmd, _ins):
-        cmd.load_to_scoreboard(0, "condition")
-        cmd.drop()
+        with cmd.no_execute_params():
+            cmd.conditions().push(0)
+        cmd.conditions().set_from(cmd.stack())
+        cmd.conditions().load_to_scoreboard("condition")
+        cmd.stack().drop()
 
         snippet = f"{self.wasm_function.name}_snippet_{self.snippets}"
         self.snippets += 1
@@ -128,10 +134,30 @@ class InstructionTable:
         self.output.append(snippet)
 
     @InstructionHandler
+    def else_(self, cmd, _ins):
+        cmd.conditions().load_to_scoreboard("condition")
+
+        snippet = f"{self.wasm_function.name}_snippet_{self.snippets}"
+        self.snippets += 1
+
+        cmd.comment("Else branch is also split into separate function")
+        with cmd.execute_param(
+                f"if score condition wasm = zero wasm"
+        ):
+            cmd.function(self.namespace, snippet)
+
+        self.output[-1] = snippet
+        return self.output[-2]
+
+    @InstructionHandler
     def end(self, cmd, _ins):
         # Beware: This may be the whole function's end
         if len(self.output) > 1:
             self.output.pop()
+
+            with cmd.no_execute_params():
+                cmd.conditions().drop()
+            return self.output[-1]
 
     @InstructionHandler
     def return_(self, cmd, _ins):
@@ -145,7 +171,7 @@ class InstructionTable:
         cmd.push_local_frame(len(func.type.param_types))
         for i, _ in enumerate(func.type.param_types):
             cmd.local_set(i)
-            cmd.drop()
+            cmd.stack().drop()
 
         # Actually execute function
         cmd.function(self.namespace, func.name)
@@ -156,7 +182,7 @@ class InstructionTable:
     @InstructionHandler
     def local_set(self, cmd, ins):
         cmd.local_set(ins.imm.local_index)
-        cmd.drop()
+        cmd.stack().drop()
 
     @InstructionHandler
     def local_get(self, cmd, ins):

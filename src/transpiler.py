@@ -76,8 +76,7 @@ class Context:
             outputs[func.name].append(prologue)
 
         for instruction in wasm.decode_bytecode(func.body.code):
-            out = instruction_table.output[-1]
-            commands = instruction_table.handle(instruction)
+            commands, out = instruction_table.handle(instruction)
             outputs[out].append(commands)
 
         epilogue = instruction_table.epilogue()

@@ -31,6 +31,23 @@
     end
     i32.const 0)
 
+  (func $abs (param $val i32) (result i32)
+    (local $return i32)
+    local.get $val
+    i32.const 0
+    i32.lt_s
+    if
+      i32.const 0
+      local.get $val
+      i32.sub
+      local.set $return
+    else
+      local.get $val
+      local.set $return
+    end
+    local.get $return)
+
   (export "inv" (func $inv))
   (export "meaningful" (func $meaningful))
-  (export "big" (func $big)))
+  (export "big" (func $big))
+  (export "abs" (func $abs)))

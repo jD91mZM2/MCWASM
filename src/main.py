@@ -17,7 +17,6 @@ parser.add_argument(
 parser.add_argument(
     "--namespace",
     help="The datapack's namespace",
-    required=True,
 )
 parser.add_argument(
     "--force",
@@ -50,6 +49,9 @@ shutil.copytree(
     Path(__file__).parent.with_name("template"),
     args.out_dir,
 )
+
+if args.namespace is None:
+    args.namespace = args.out_dir.name
 
 data_dir = args.out_dir.joinpath("data")
 namespace_dir = data_dir.joinpath(args.namespace)

@@ -7,6 +7,7 @@ scoreboard players set returned wasm 0
 
 # Set up storage
 data modify storage wasm Stack set value []
+data modify storage wasm Conditions set value []
 data modify storage wasm Locals set value []
 
 # Display an interactive thing
