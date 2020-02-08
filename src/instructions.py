@@ -168,7 +168,7 @@ class InstructionTable:
         func = self.ctx.function(ins.imm.function_index)
 
         # Map stack to local variables
-        cmd.push_local_frame(len(func.type.param_types))
+        cmd.local_frame_push(len(func.type.param_types))
         for i, _ in enumerate(func.type.param_types):
             cmd.local_set(i)
             cmd.stack().drop()
@@ -177,7 +177,7 @@ class InstructionTable:
         cmd.function(self.namespace, func.name)
 
         # Drop the stack frame
-        cmd.drop_local_frame()
+        cmd.local_frame_drop()
 
     @InstructionHandler
     def local_set(self, cmd, ins):

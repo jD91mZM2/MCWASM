@@ -79,7 +79,7 @@ for func in ctx.iter_functions():
 # Create tags for all exports
 tag_dir = namespace_dir.joinpath("tags", "functions")
 tag_dir.mkdir(parents=True)
-for export in ctx.iter_exports():
+for export in filter(lambda e: e is not None, ctx.iter_exports()):
     path = tag_dir.joinpath(export.name + ".json")
     with path.open("w") as f:
         f.write(json.dumps({

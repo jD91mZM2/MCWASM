@@ -1,9 +1,20 @@
 from collections import defaultdict, namedtuple
-from instructions import InstructionTable
+from enum import Enum
 import wasm
 
+from cmds import CmdGenerator
+from instructions import InstructionTable
+
+
+class ExportKind(Enum):
+    FUNCTION = 0x0
+    TABLE = 0x1
+    MEMORY = 0x2
+    GLOBAL = 0x3
+
+
 Function = namedtuple("Function", ["name", "type", "body"])
-Export = namedtuple("Export", ["name", "value"])
+Export = namedtuple("Export", ["name", "kind", "value"])
 
 condition_counter = 0
 
@@ -31,29 +42,27 @@ class Context:
 
             if type(section) == wasm.Section:
                 if section_data.id == wasm.SEC_CODE:
-                    for entry in section_data.payload.bodies:
-                        self.functions.append(entry)
+                    self.functions += section_data.payload.bodies
                 elif section_data.id == wasm.SEC_TYPE:
-                    for entry in section_data.payload.entries:
-                        self.types.append(entry)
+                    self.types += section_data.payload.entries
                 elif section_data.id == wasm.SEC_FUNCTION:
                     self.func_types += section_data.payload.types
                 elif section_data.id == wasm.SEC_EXPORT:
-                    for entry in section_data.payload.entries:
-                        self.exports.append(entry)
+                    self.exports += section_data.payload.entries
 
     def export(self, i):
         export = self.exports[i]
 
-        return Export(
-            name=bytearray(export.field_str).decode("UTF-8"),
-            # TODO support more types
-            value=self.function(i),
-        )
+        # TODO support more types?
+        if export.kind == ExportKind.FUNCTION.value:
+            return Export(
+                name=bytearray(export.field_str).decode("UTF-8"),
+                kind=ExportKind.FUNCTION,
+                value=self.function(export.index),
+            )
 
     def iter_exports(self):
-        for i, _ in enumerate(self.exports):
-            yield self.export(i)
+        return map(self.export, range(len(self.exports)))
 
     def function(self, i):
         return Function(
@@ -63,12 +72,16 @@ class Context:
         )
 
     def iter_functions(self):
-        for i, _ in enumerate(self.functions):
-            # TODO support more types
-            yield self.function(i)
+        return map(self.function, range(len(self.functions)))
 
     def transpile(self, func, namespace):
         outputs = defaultdict(lambda: [])
+
+        if func.body.local_count > 0:
+            cmd = CmdGenerator([])
+            cmd.comment("Reserve space for local variables (other than args)")
+            cmd.local_frame_reserve(func.body.local_count)
+            outputs[func.name].append(cmd.output)
 
         instruction_table = InstructionTable(self, func, namespace)
         prologue = instruction_table.prologue()

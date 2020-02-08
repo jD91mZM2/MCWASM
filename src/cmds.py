@@ -60,15 +60,22 @@ class CmdGenerator:
         return Stack(self, "Conditions")
 
     # Add a new local variable list, setting each value to zero initially
-    def push_local_frame(self, new_size):
+    def local_frame_push(self, new_size):
         self.execute(
             f"data modify storage wasm Locals append value "
             f"[{', '.join(['0L'] * new_size)}]"
         )
 
     # Drop the top local variable list
-    def drop_local_frame(self):
+    def local_frame_drop(self):
         self.execute("data remove storage wasm Locals[-1]")
+
+    # Reserve extra local variable space
+    def local_frame_reserve(self, extra_size):
+        for _ in range(extra_size):
+            self.execute(
+                f"data modify storage wasm Locals[-1] append value 0L"
+            )
 
     # Get local
     def local_get(self, local_index):
