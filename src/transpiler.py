@@ -78,13 +78,14 @@ class Context:
     def transpile(self, func, namespace):
         outputs = defaultdict(lambda: [])
 
+        instruction_table = InstructionTable(self, func, namespace)
+
         if func.body.local_count > 0:
             cmd = CmdGenerator([])
             cmd.comment("Reserve space for local variables (other than args)")
-            cmd.local_frame_reserve(Type.from_wasm(func.body.local_count))
+            cmd.local_frame_reserve(Type.from_wasm_locals(func.body.locals))
             outputs[func.name].append(cmd.output)
 
-        instruction_table = InstructionTable(self, func, namespace)
         prologue = instruction_table.prologue()
         if prologue is not None:
             outputs[func.name].append(prologue)

@@ -23,6 +23,12 @@ class Type(namedtuple(
         else:
             return list(map(Type.from_wasm, type_ids))
 
+    def from_wasm_locals(local_entries):
+        types = []
+        for entry in local_entries:
+            types += [Type.from_wasm(entry.type)] * entry.count
+        return types
+
     def count(types):
         counted = defaultdict(lambda: 0)
         for ty in types:

@@ -64,8 +64,10 @@ class CmdGenerator:
         return Stack(self, "Conditions", self.types.conditions)
 
     # Add a new local variable list, setting each value to zero initially
+    #
+    # NOTE: Unlike the stack, this does not update the type list. So make sure
+    # you don't rely on frames for much more than calling a function.
     def local_frame_push(self, types):
-        self.types.locals += types
         nbt = map(
             lambda t: (
                 f"{t[0].name}: [{', '.join([str(Value(t[0], 0))] * t[1])}]"
@@ -77,13 +79,18 @@ class CmdGenerator:
             f"{{{', '.join(nbt)}}}"
         )
 
-    # Drop the top local variable list
+    # Drop the top local variable list.
+    #
+    # NOTE: Unlike the stack, this does not update the type list. So make sure
+    # you don't rely on frames for much more than calling a function.
     def local_frame_drop(self):
         self.execute("data remove storage wasm Locals[-1]")
 
     # Reserve extra local variable space
+    #
+    # NOTE: Unlike the stack, this does not update the type list. So make sure
+    # you don't rely on frames for much more than calling a function.
     def local_frame_reserve(self, types):
-        self.types.locals += types
         for ty in types:
             self.execute(
                 f"data modify storage wasm Locals[-1].{ty.name} append "

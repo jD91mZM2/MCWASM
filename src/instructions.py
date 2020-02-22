@@ -23,8 +23,11 @@ class InstructionTable:
         self.snippets = 0
         self.types = Types()
 
+        # Set up the initial types. `local_frame_push` and other functions
+        # won't touch the type list - they rather rely on the new function
+        # setting up the same type list by information from WASM.
         self.types.locals = Type.from_wasm(wasm_function.type.param_types)
-        self.types.locals += Type.from_wasm(wasm_function.body.locals)
+        self.types.locals += Type.from_wasm_locals(wasm_function.body.locals)
 
         # See the spec:
         # https://webassembly.github.io/spec/core/binary/instructions.html
