@@ -71,8 +71,8 @@ recursion allows stuff to be ran multiple times. WASM loops look like this:
 ```wasm
 block  ;; implicitly gets label 0
   loop ;; implicitly gets label 1
-    br 1 ;; in order to break loop
-    br 0 ;; in order to continue loop
+    br 0 ;; in order to break loop
+    br 1 ;; in order to continue loop
   end
 end
 ```
@@ -86,10 +86,10 @@ which is best thought in these terms:
 or
 
 ```c
-label_0:
+label_1:
   goto label_1; // break loop
   goto label_0; // continue loop
-label_1:
+label_0:
 ```
 
 Each loop body would get its own "snippet" (just like if-statements currently
