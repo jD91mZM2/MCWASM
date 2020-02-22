@@ -87,8 +87,8 @@ or
 
 ```c
 label_1:
-  goto label_1; // break loop
-  goto label_0; // continue loop
+  goto label_0; // break loop
+  goto label_1; // continue loop
 label_0:
 ```
 
