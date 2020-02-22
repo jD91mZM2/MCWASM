@@ -4,6 +4,7 @@ import wasm
 
 from cmds import CmdGenerator
 from instructions import InstructionTable
+from value_types import Type
 
 
 class ExportKind(Enum):
@@ -80,7 +81,7 @@ class Context:
         if func.body.local_count > 0:
             cmd = CmdGenerator([])
             cmd.comment("Reserve space for local variables (other than args)")
-            cmd.local_frame_reserve(func.body.local_count)
+            cmd.local_frame_reserve(Type.from_wasm(func.body.local_count))
             outputs[func.name].append(cmd.output)
 
         instruction_table = InstructionTable(self, func, namespace)

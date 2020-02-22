@@ -1,4 +1,5 @@
 from cmds import CmdGenerator
+from value_types import Type, Types, Value
 import wasm
 
 CONDITION_COUNTER = 0
@@ -20,6 +21,10 @@ class InstructionTable:
         self.namespace = namespace
         self.output = [wasm_function.name]
         self.snippets = 0
+        self.types = Types()
+
+        self.types.locals = Type.from_wasm(wasm_function.type.param_types)
+        self.types.locals += Type.from_wasm(wasm_function.body.locals)
 
         # See the spec:
         # https://webassembly.github.io/spec/core/binary/instructions.html
@@ -36,8 +41,10 @@ class InstructionTable:
             wasm.OP_END: self.end(),
 
             # Consts
-            wasm.OP_I32_CONST: self.const(),
-            wasm.OP_I64_CONST: self.const(),
+            wasm.OP_I32_CONST: self.const(Type.I32),
+            wasm.OP_I64_CONST: self.const(Type.I64),
+            wasm.OP_F32_CONST: self.const(Type.F32),
+            wasm.OP_F64_CONST: self.const(Type.F64),
 
             # i32 data types
             wasm.OP_I32_EQZ: self.eqz(),
@@ -72,8 +79,9 @@ class InstructionTable:
 
     def handle(self, instruction):
         default_out = self.output[-1]
-        cmd = CmdGenerator(self.conditions[:])
+        cmd = CmdGenerator(self.conditions[:], types=self.types)
         if instruction.op.id in self.handlers:
+            print(instruction.op.mnemonic, self.types.stack)
             cmd.execute(
                 'tellraw @a "[WASM] Executing: '
                 + wasm.format_instruction(instruction)
@@ -91,8 +99,8 @@ class InstructionTable:
         return cmd.output, default_out
 
     @InstructionHandler
-    def const(self, cmd, ins):
-        cmd.stack().push(ins.imm.value)
+    def const(self, type, cmd, ins):
+        cmd.stack().push(Value(type, ins.imm.value))
 
     @InstructionHandler
     def operation(self, op, cmd, _ins):
@@ -101,23 +109,23 @@ class InstructionTable:
     @InstructionHandler
     def eqz(self, cmd, _ins):
         cmd.stack().load_to_scoreboard("lhs")
-        cmd.stack().set(0)
+        cmd.stack().set(Value.i32(0))
         with cmd.execute_param("if score lhs wasm = zero wasm"):
-            cmd.stack().set(1)
+            cmd.stack().set(Value.i32(1))
 
     @InstructionHandler
     def cmp(self, op, cmd, _ins):
         cmd.stack().load_to_scoreboard("rhs")
         cmd.stack().drop()
         cmd.stack().load_to_scoreboard("lhs")
-        cmd.stack().set(0)
+        cmd.stack().set(Value.i32(0))
         with cmd.execute_param(f"if score lhs wasm {op} rhs wasm"):
-            cmd.stack().set(1)
+            cmd.stack().set(Value.i32(1))
 
     @InstructionHandler
     def if_(self, cmd, _ins):
         with cmd.no_execute_params():
-            cmd.conditions().push(0)
+            cmd.conditions().push(Value.i32(0))
         cmd.conditions().set_from(cmd.stack())
         cmd.conditions().load_to_scoreboard("condition")
         cmd.stack().drop()
@@ -161,6 +169,7 @@ class InstructionTable:
 
     @InstructionHandler
     def return_(self, cmd, _ins):
+        self.types.stack.pop()
         cmd.set_scoreboard(f"returned", 1)
 
     @InstructionHandler
@@ -168,8 +177,8 @@ class InstructionTable:
         func = self.ctx.function(ins.imm.function_index)
 
         # Map stack to local variables
-        cmd.local_frame_push(len(func.type.param_types))
-        for i, _ in enumerate(func.type.param_types):
+        cmd.local_frame_push(Type.from_wasm(func.type.param_types))
+        for i in range(func.type.param_count):
             cmd.local_set(i)
             cmd.stack().drop()
 
@@ -178,6 +187,9 @@ class InstructionTable:
 
         # Drop the stack frame
         cmd.local_frame_drop()
+
+        # Register return value type
+        self.types.stack.append(Type.from_wasm(func.type.return_type))
 
     @InstructionHandler
     def local_set(self, cmd, ins):
