@@ -60,3 +60,77 @@ there by any means, but it's *actual* progress.
      just completely unstable.
    - `init` is the function that runs when you run `/reload` (a part of the
      `#minecraft:load` tag).
+
+## Plans
+
+### How to implement loops
+
+The easiest way to keep all state and context, would be to implement loops as
+recursion allows stuff to be ran multiple times. WASM loops look like this:
+
+```wasm
+block  ;; implicitly gets label 0
+  loop ;; implicitly gets label 1
+    br 1 ;; in order to break loop
+    br 0 ;; in order to continue loop
+  end
+end
+```
+
+which is best thought in these terms:
+
+- break = stop running the code you're currently running
+- breaking a loop = stop running the loop's body, but then re-run it
+- breaking a block = stop running the block's body, exit the block
+
+or
+
+```c
+label_0:
+  goto label_1; // break loop
+  goto label_0; // continue loop
+label_1:
+```
+
+Each loop body would get its own "snippet" (just like if-statements currently
+work by creating a file `func_X_snippet_Y.mcfunction`). Each line in the body
+would have the extra conditional `if score break_N wasm == zero wasm`, similar
+to how return works. The loop body would end with a recursive `function` call,
+that isn't conditional on `break_N`.
+
+A block would simply create a conditional `if score break_M wasm == zero wasm`,
+and then flip it to 1 when breaking the body. The recursive `function` call in
+a loop would still be dependent on that variable.
+
+`func_0_snippet_0`:
+
+```mcfunction
+if score break_0 wasm == zero wasm if score break_1 wasm == zero wasm run say I'm in your loop
+
+# To `br` loop (continue)
+if score break_0 wasm == zero wasm if score break_1 wasm == zero wasm run scoreboard players set break_1 wasm 1
+
+# To `br` block (break)
+if score break_0 wasm == zero wasm if score break_1 wasm == zero wasm run scoreboard players set break_0 wasm 1
+
+# Function epilogue: Reset and loop
+if score break_0 wasm == zero wasm run scoreboard players set break_1 wasm 0
+if score break_0 wasm == zero wasm run function namespace:func_0_snippet_0
+```
+
+Nesting functions with loops should in theory be able to be implemented either
+by pushing all label break values to the stack, OR just resetting them to zero
+(after all, the function is only called if all break variables are zero). At
+the end of a function (not a snippet) we could probably count all used loop
+variables during the function and unconditionally reset them, similar to how
+`return` is reset somewhere.
+
+### How to emulate floating point
+
+Two particularly compelling ideas:
+
+- [Floating Point Numbers in Minecraft 1.12](https://youtu.be/e6OrClOPO_M)
+- Write some Rust code to emulate them, and then compile that Rust to WASM and
+  then to mcfunction and use it in the transpiler itself :D (the fact that I'm
+  soon at the point where missing WASM features can be emulated with WASM is a
+  really good sign)

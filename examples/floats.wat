@@ -1,3 +1,4 @@
+;; Floating-point math operations don't actually work yet. See README
 (module
   (func $fadd (param $lhs f32) (param $rhs f32) (result f32)
     local.get $lhs
