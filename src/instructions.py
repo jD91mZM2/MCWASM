@@ -1,8 +1,13 @@
-from cmds import CmdGenerator
-from value_types import Type, Types, Value
+from enum import auto, Enum
 import wasm
 
-CONDITION_COUNTER = 0
+from cmds import CmdGenerator
+from value_types import Type, Types, Value
+
+
+class Context(Enum):
+    IF = auto()
+    BLOCK = auto()
 
 
 def InstructionHandler(func):
@@ -22,6 +27,8 @@ class InstructionTable:
         self.output = [wasm_function.name]
         self.snippets = 0
         self.types = Types()
+        self.context = []
+        self.control_depth = -1
 
         # Set up the initial types. `local_frame_push` and other functions
         # won't touch the type list - they rather rely on the new function
@@ -41,6 +48,9 @@ class InstructionTable:
             wasm.OP_IF: self.if_(),
             wasm.OP_ELSE: self.else_(),
             wasm.OP_RETURN: self.return_(),
+            wasm.OP_BLOCK: self.block(),
+            wasm.OP_BR: self.br(),
+            wasm.OP_BR_IF: self.br_if(),
             wasm.OP_END: self.end(),
 
             # Consts
@@ -82,7 +92,7 @@ class InstructionTable:
 
     def handle(self, instruction):
         default_out = self.output[-1]
-        cmd = CmdGenerator(self.conditions[:], types=self.types)
+        cmd = CmdGenerator(self.conditions, types=self.types)
         if instruction.op.id in self.handlers:
             print(instruction.op.mnemonic, self.types.stack)
             cmd.execute(
@@ -104,6 +114,29 @@ class InstructionTable:
     @InstructionHandler
     def const(self, type, cmd, ins):
         cmd.stack().push(Value(type, ins.imm.value))
+
+    @InstructionHandler
+    def block(self, cmd, _ins):
+        self.control_depth += 1
+        label = self.control_depth
+
+        cmd.set_scoreboard(f"block_{label}", 0)
+        cmd.execute_params.append(f"if score block_{label} wasm = zero wasm")
+        self.context.append(Context.BLOCK)
+
+    @InstructionHandler
+    def br(self, cmd, ins):
+        label = self.control_depth - ins.imm.relative_depth
+        cmd.set_scoreboard(f"block_{label}", 1)
+
+    @InstructionHandler
+    def br_if(self, cmd, ins):
+        cmd.stack().load_to_scoreboard("condition")
+        cmd.stack().drop()
+
+        with cmd.execute_param(f"unless score condition wasm = zero wasm"):
+            label = self.control_depth - ins.imm.relative_depth
+            cmd.set_scoreboard(f"block_{label}", 1)
 
     @InstructionHandler
     def operation(self, op, cmd, _ins):
@@ -137,12 +170,11 @@ class InstructionTable:
         self.snippets += 1
 
         cmd.comment("Conditional is split into separate function")
-        with cmd.execute_param(
-                f"unless score condition wasm = zero wasm"
-        ):
+        with cmd.execute_param(f"unless score condition wasm = zero wasm"):
             cmd.function(self.namespace, snippet)
 
         self.output.append(snippet)
+        self.context.append(Context.IF)
 
     @InstructionHandler
     def else_(self, cmd, _ins):
@@ -152,9 +184,7 @@ class InstructionTable:
         self.snippets += 1
 
         cmd.comment("Else branch is also split into separate function")
-        with cmd.execute_param(
-                f"if score condition wasm = zero wasm"
-        ):
+        with cmd.execute_param(f"if score condition wasm = zero wasm"):
             cmd.function(self.namespace, snippet)
 
         self.output[-1] = snippet
@@ -162,13 +192,23 @@ class InstructionTable:
 
     @InstructionHandler
     def end(self, cmd, _ins):
-        # Beware: This may be the whole function's end
-        if len(self.output) > 1:
-            self.output.pop()
+        # We don't know whether we're ending a snippet or a conditional, which
+        # is why we keep track of a "context".
+        if len(self.context) > 0:
+            context = self.context.pop()
 
-            with cmd.no_execute_params():
-                cmd.conditions().drop()
-            return self.output[-1]
+            if context == Context.BLOCK:
+                cmd.execute_params.pop()
+                cmd.comment("In case of nested function, reset here also")
+                cmd.set_scoreboard(f"block_{self.control_depth}", 0)
+                self.control_depth -= 1
+            elif context == Context.IF:
+                self.output.pop()
+
+                with cmd.no_execute_params():
+                    cmd.conditions().drop()
+
+                return self.output[-1]
 
     @InstructionHandler
     def return_(self, cmd, _ins):

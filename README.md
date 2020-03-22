@@ -69,10 +69,10 @@ The easiest way to keep all state and context, would be to implement loops as
 recursion allows stuff to be ran multiple times. WASM loops look like this:
 
 ```wasm
-block  ;; implicitly gets label 0
-  loop ;; implicitly gets label 1
-    br 0 ;; in order to break loop
-    br 1 ;; in order to continue loop
+block  ;; implicitly gets label 1
+  loop ;; implicitly gets label 0
+    br 1 ;; in order to break loop
+    br 0 ;; in order to continue loop
   end
 end
 ```
@@ -86,10 +86,10 @@ which is best thought in these terms:
 or
 
 ```c
-label_1:
-  goto label_0; // break loop
-  goto label_1; // continue loop
 label_0:
+  goto label_1; // break loop
+  goto label_0; // continue loop
+label_1:
 ```
 
 Each loop body would get its own "snippet" (just like if-statements currently
