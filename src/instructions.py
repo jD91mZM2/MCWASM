@@ -111,9 +111,21 @@ class InstructionTable:
             )
         return cmd.output, default_out
 
+    def snippet(self):
+        snippet = f"{self.wasm_function.name}_snippet_{self.snippets}"
+        self.snippets += 1
+        return snippet
+
     @InstructionHandler
     def const(self, type, cmd, ins):
         cmd.stack().push(Value(type, ins.imm.value))
+
+    @InstructionHandler
+    def loop(self, cmd, _ins):
+        snippet = self.snippet()
+        cmd.comment("Loop body is split into its own function")
+        cmd.function(self.namespace, snippet)
+        self.output.append(snippet)
 
     @InstructionHandler
     def block(self, cmd, _ins):
@@ -166,8 +178,7 @@ class InstructionTable:
         cmd.conditions().load_to_scoreboard("condition")
         cmd.stack().drop()
 
-        snippet = f"{self.wasm_function.name}_snippet_{self.snippets}"
-        self.snippets += 1
+        snippet = self.snippet()
 
         cmd.comment("Conditional is split into separate function")
         with cmd.execute_param(f"unless score condition wasm = zero wasm"):
